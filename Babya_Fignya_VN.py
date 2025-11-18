@@ -1,6 +1,7 @@
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     MessageHandler,
     filters,
@@ -10,8 +11,8 @@ from telegram.ext import (
 from datetime import datetime
 import pytz
 import os
+import threading
 import asyncio
-from threading import Thread
 
 # -----------------------------
 # 🔹 Настройки
@@ -101,14 +102,20 @@ async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 # -----------------------------
-# 🔹 Инициализация бота
+# 🔹 Инициализация Telegram Application
 # -----------------------------
-app_bot = ApplicationBuilder().token(TOKEN).build()
+application = (
+    ApplicationBuilder()
+    .token(TOKEN)
+    .concurrent_updates(True)
+    .build()
+)
 
-app_bot.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
-app_bot.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
-app_bot.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, handle_message))
-app_bot.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_message))
+# Handlers
+application.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
+application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
+application.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, handle_message))
+application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_message))
 
 # -----------------------------
 # 🔹 Flask — Webhook
@@ -118,25 +125,37 @@ flask_app = Flask(__name__)
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
-    print(">>> Update received")
+    update = Update.de_json(data, application.bot)
 
-    update = Update.de_json(data, app_bot.bot)
-    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), app_bot._loop)
+    # Кладём обновление в очередь обработки
+    application.update_queue.put_nowait(update)
 
     return "ok", 200
 
-# -----------------------------
-# 🔹 Запуск: бот в отдельном потоке, Flask — в главном
-# -----------------------------
-def start_bot():
-    asyncio.set_event_loop(app_bot.loop)
-    app_bot.run_polling(stop_signals=None)
 
+@flask_app.route("/", methods=["GET"])
+def index():
+    return "Bot is running!", 200
+
+
+# -----------------------------
+# 🔹 Запуск Telegram в фоне
+# -----------------------------
+def run_telegram():
+    asyncio.run(application.initialize())
+    asyncio.run(application.start())
+    asyncio.get_event_loop().run_forever()
+
+
+# -----------------------------
+# 🔹 Главный блок запуска
+# -----------------------------
 if __name__ == "__main__":
     print("🚀 Стартуем...")
 
-    bot_thread = Thread(target=start_bot, daemon=True)
-    bot_thread.start()
+    # Запускаем Telegram Application в отдельном потоке
+    threading.Thread(target=run_telegram, daemon=True).start()
 
-    port = int(os.environ.get("PORT", 5000))
+    # Запускаем Flask на Render
+    port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
