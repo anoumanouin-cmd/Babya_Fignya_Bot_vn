@@ -2,11 +2,12 @@
 # coding: utf-8
 
 from flask import Flask, request
-from telegram import Bot, Update
+from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ChatMemberHandler, ContextTypes
 from datetime import datetime
 import pytz
 import asyncio
+import threading
 
 # -----------------------------
 # 🔹 Настройки
@@ -30,7 +31,7 @@ def get_time_period():
 # -----------------------------
 # 🔹 Обработчики сообщений
 # -----------------------------
-async def handle_message(update, context):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = getattr(update, "edited_message", None) or update.message
     if not message:
         return
@@ -49,7 +50,6 @@ async def handle_message(update, context):
     if today not in announcement_posted:
         announcement_posted[today] = {'morning': False, 'evening': False}
 
-    # --- Ночь ---
     if period == "night":
         await context.bot.send_message(
             chat_id=message.chat.id,
@@ -59,7 +59,6 @@ async def handle_message(update, context):
         await message.delete()
         return
 
-    # --- Утро ---
     if period == "morning":
         if not announcement_posted[today]["morning"]:
             announcement_posted[today]["morning"] = True
@@ -73,7 +72,6 @@ async def handle_message(update, context):
             await message.delete()
         return
 
-    # --- Вечер ---
     if period == "evening":
         if not announcement_posted[today]["evening"]:
             announcement_posted[today]["evening"] = True
@@ -88,7 +86,7 @@ async def handle_message(update, context):
         return
 
 # === Приветствие новых участников ===
-async def greet_new_member(update, context):
+async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not getattr(message, "new_chat_members", None):
         return
@@ -110,15 +108,14 @@ app_bot.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_mes
 # -----------------------------
 # 🔹 Flask + webhook
 # -----------------------------
-bot = Bot(token=TOKEN)
 flask_app = Flask(__name__)
 
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     """Telegram присылает сюда обновления"""
-    update = Update.de_json(request.get_json(force=True), bot)
-    # Создаем асинхронную задачу, чтобы не блокировать Flask
-    asyncio.create_task(app_bot.process_update(update))
+    update = Update.de_json(request.get_json(force=True), app_bot.bot)
+    # Отправляем апдейт в уже запущенный loop бота
+    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), loop)
     return "ok"
 
 # -----------------------------
@@ -127,13 +124,18 @@ def webhook():
 if __name__ == "__main__":
     import os
 
-    async def main():
-        await app_bot.initialize()
-        await app_bot.start()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    def run_bot():
+        loop.run_until_complete(app_bot.initialize())
+        loop.run_until_complete(app_bot.start())
         print("🤖 Бот готов к работе!")
+        loop.run_forever()
 
-        # Flask запускается синхронно
-        port = int(os.environ.get("PORT", 5000))
-        flask_app.run(host="0.0.0.0", port=port)
+    # Запускаем бот в отдельном потоке
+    threading.Thread(target=run_bot).start()
 
-    asyncio.run(main())
+    # Запускаем Flask
+    port = int(os.environ.get("PORT", 5000))
+    flask_app.run(host="0.0.0.0", port=port)
