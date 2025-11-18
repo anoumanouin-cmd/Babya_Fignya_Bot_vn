@@ -22,7 +22,7 @@ def get_time_period():
     return "night"
 
 # -----------------------------
-# Обработчик объявлений
+# Обработчик сообщений
 # -----------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = getattr(update, "edited_message", None) or update.message
@@ -109,17 +109,17 @@ def index():
 def webhook():
     data = request.get_json(force=True)
     update = Update.de_json(data, app_bot.bot)
-    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), loop)
+    # Используем loop бота напрямую, чтобы не было конфликтов
+    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), app_bot._loop)
     return "ok", 200
 
 # -----------------------------
 # Старт Flask + Webhook
 # -----------------------------
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(app_bot.initialize())
-    print("🚀 Bot initialized and ready for webhook!")
-
+    print("🚀 Bot initializing for webhook mode...")
+    # Инициализируем бота и сохраняем loop
+    asyncio.run(app_bot.initialize())
+    # После initialize, у app_bot уже есть _loop
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
