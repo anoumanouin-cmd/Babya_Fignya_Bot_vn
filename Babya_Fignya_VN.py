@@ -1,17 +1,11 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
-
-
 import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ChatMemberHandler, ContextTypes
 from datetime import datetime
 import pytz
-import nest_asyncio
-
-nest_asyncio.apply()
 
 TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"
 VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
@@ -29,12 +23,10 @@ def get_time_period():
 
 # --- Обработчик сообщений (новые и редактированные) ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Берём редактированное сообщение, если есть, иначе новое
     message = getattr(update, "edited_message", None) or update.message
     if not message:
         return
 
-    # Берём текст или подпись
     content = message.text or message.caption
     if not content:
         return
@@ -43,7 +35,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "#объявление" not in text:
         return
 
-    author = message.from_user  # автор сообщения
+    author = message.from_user
     period = get_time_period()
     today = datetime.now(VN_TZ).date().isoformat()
     if today not in announcement_posted:
@@ -123,19 +115,13 @@ app.add_handler(MessageHandler(
     handle_message
 ))
 
-# === Запуск бота через asyncio в Jupyter ===
-async def start_bot():
-    await app.initialize()
-    await app.start()
-    print("🤖 Бот запущен и следит за группой...")
-    await app.updater.start_polling()  # polling работает в фоне
+# === Запуск бота на Render / обычном Python ===
+if __name__ == "__main__":
+    async def main():
+        await app.initialize()
+        await app.start()
+        print("🤖 Бот запущен и следит за группой...")
+        await app.updater.start_polling()
+        await asyncio.Event().wait()  # держим скрипт живым бесконечно
 
-# Создаем задачу, чтобы loop Jupyter не блокировался
-asyncio.create_task(start_bot())
-
-
-# In[ ]:
-
-
-
-
+    asyncio.run(main())
