@@ -11,8 +11,8 @@ import asyncio
 # -----------------------------
 # 🔹 Настройки
 # -----------------------------
-TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"  # токен твоего бота
-TIMEZONE = pytz.timezone("Asia/Ho_Chi_Minh")  # часовой пояс
+TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"
+TIMEZONE = pytz.timezone("Asia/Ho_Chi_Minh")
 announcement_posted = {}
 
 # -----------------------------
@@ -63,10 +63,7 @@ async def handle_message(update, context):
     if period == "morning":
         if not announcement_posted[today]["morning"]:
             announcement_posted[today]["morning"] = True
-            await context.bot.send_message(
-                chat_id=message.chat.id,
-                text="Утреннее объявление ✅"
-            )
+            await context.bot.send_message(chat_id=message.chat.id, text="Утреннее объявление ✅")
         else:
             await context.bot.send_message(
                 chat_id=message.chat.id,
@@ -80,10 +77,7 @@ async def handle_message(update, context):
     if period == "evening":
         if not announcement_posted[today]["evening"]:
             announcement_posted[today]["evening"] = True
-            await context.bot.send_message(
-                chat_id=message.chat.id,
-                text="Вечернее объявление ✅"
-            )
+            await context.bot.send_message(chat_id=message.chat.id, text="Вечернее объявление ✅")
         else:
             await context.bot.send_message(
                 chat_id=message.chat.id,
@@ -101,10 +95,8 @@ async def greet_new_member(update, context):
     for member in message.new_chat_members:
         if member.is_bot:
             continue
-        await context.bot.send_message(
-            chat_id=message.chat.id,
-            text=f"Привет, {member.first_name}! Приятного общения!"
-        )
+        await context.bot.send_message(chat_id=message.chat.id,
+                                       text=f"Привет, {member.first_name}! Приятного общения!")
 
 # -----------------------------
 # 🔹 Инициализация бота
@@ -125,8 +117,8 @@ flask_app = Flask(__name__)
 def webhook():
     """Telegram присылает сюда обновления"""
     update = Update.de_json(request.get_json(force=True), bot)
-    # синхронно обрабатываем async через asyncio.run
-    asyncio.run(app_bot.process_update(update))
+    # Создаем асинхронную задачу, чтобы не блокировать Flask
+    asyncio.create_task(app_bot.process_update(update))
     return "ok"
 
 # -----------------------------
@@ -134,5 +126,14 @@ def webhook():
 # -----------------------------
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 5000))  # Render назначает порт
-    flask_app.run(host="0.0.0.0", port=port)
+
+    async def main():
+        await app_bot.initialize()
+        await app_bot.start()
+        print("🤖 Бот готов к работе!")
+
+        # Flask запускается синхронно
+        port = int(os.environ.get("PORT", 5000))
+        flask_app.run(host="0.0.0.0", port=port)
+
+    asyncio.run(main())
