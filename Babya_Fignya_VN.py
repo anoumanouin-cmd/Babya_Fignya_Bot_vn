@@ -1,19 +1,24 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ChatMemberHandler, ContextTypes
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, MessageHandler, filters
 from datetime import datetime
 import pytz
 
-TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"
-VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
+# -----------------------------
+# 🔹 Настройки
+# -----------------------------
+TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"  # токен твоего бота
+TIMEZONE = pytz.timezone("Asia/Ho_Chi_Minh")  # часовой пояс
 announcement_posted = {}
 
-# === Функция для определения периода дня ===
+# -----------------------------
+# 🔹 Функция для определения периода дня
+# -----------------------------
 def get_time_period():
-    now = datetime.now(VN_TZ).time()
+    now = datetime.now(TIMEZONE).time()
     if now >= datetime.strptime("07:00", "%H:%M").time() and now < datetime.strptime("16:00", "%H:%M").time():
         return "morning"
     elif now >= datetime.strptime("16:00", "%H:%M").time() and now < datetime.strptime("23:59", "%H:%M").time():
@@ -21,8 +26,10 @@ def get_time_period():
     else:
         return "night"
 
-# --- Обработчик сообщений (новые и редактированные) ---
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# -----------------------------
+# 🔹 Обработчик сообщений
+# -----------------------------
+async def handle_message(update, context):
     message = getattr(update, "edited_message", None) or update.message
     if not message:
         return
@@ -37,7 +44,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     author = message.from_user
     period = get_time_period()
-    today = datetime.now(VN_TZ).date().isoformat()
+    today = datetime.now(TIMEZONE).date().isoformat()
     if today not in announcement_posted:
         announcement_posted[today] = {'morning': False, 'evening': False}
 
@@ -85,43 +92,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.delete()
         return
 
-# === Приветствие новых участников ===
-async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.message
-    if not message or not getattr(message, "new_chat_members", None):
-        return
-    for member in message.new_chat_members:
-        if member.is_bot:
-            continue
-        await context.bot.send_message(
-            chat_id=message.chat.id,
-            text=f"Привет, {member.first_name}! Приятного общения!"
-        )
+# -----------------------------
+# 🔹 Настройка Flask + Telegram
+# -----------------------------
+bot = Bot(token=TOKEN)
+app = Flask(__name__)
+dispatcher = Dispatcher(bot=bot, update_queue=None, workers=0, use_context=True)
+dispatcher.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# === Инициализация приложения ===
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
-app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
+# -----------------------------
+# 🔹 Endpoint для webhook
+# -----------------------------
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    """Telegram будет присылать сюда обновления"""
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "ok"
 
-# --- Новые сообщения ---
-app.add_handler(MessageHandler(
-    (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
-    handle_message
-))
-
-# --- Редактированные сообщения ---
-app.add_handler(MessageHandler(
-    filters.UpdateType.EDITED_MESSAGE,
-    handle_message
-))
-
-# === Запуск бота на Render / обычном Python ===
+# -----------------------------
+# 🔹 Старт сервиса
+# -----------------------------
 if __name__ == "__main__":
-    async def main():
-        await app.initialize()
-        await app.start()
-        print("🤖 Бот запущен и следит за группой...")
-        await app.updater.start_polling()
-        await asyncio.Event().wait()  # держим скрипт живым бесконечно
-
-    asyncio.run(main())
+    import os
+    port = int(os.environ.get("PORT", 5000))  # Render назначает порт
+    app.run(host="0.0.0.0", port=port)
