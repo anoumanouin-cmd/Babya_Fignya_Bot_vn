@@ -11,6 +11,7 @@ from datetime import datetime
 import pytz
 import os
 import asyncio
+import threading
 
 # -----------------------------
 # 🔹 Настройки
@@ -117,7 +118,7 @@ flask_app = Flask(__name__)
 
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    """Telegram присылает сюда апдейты"""
+    """Telegram присылает сюда обновления"""
     update = Update.de_json(request.get_json(force=True), app_bot.bot)
     asyncio.run_coroutine_threadsafe(app_bot.process_update(update), loop)
     return "ok"
@@ -131,8 +132,13 @@ if __name__ == "__main__":
     # Создаём loop и инициализируем бота один раз
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(app_bot.initialize())
-    print("🤖 Бот инициализирован и готов к вебхукам!")
 
-    # Запускаем Flask (Render сам держит процесс)
+    async def start_bot():
+        await app_bot.initialize()
+        print("🤖 Бот инициализирован и готов к вебхукам!")
+
+    # Запускаем инициализацию бота
+    loop.run_until_complete(start_bot())
+
+    # Flask запущен в основном потоке Render
     flask_app.run(host="0.0.0.0", port=port)
