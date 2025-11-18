@@ -2,21 +2,21 @@
 # coding: utf-8
 
 from flask import Flask, request
-from telegram import Update
+from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ChatMemberHandler, ContextTypes
 from datetime import datetime
 import pytz
-import os
+import asyncio
 
 # -----------------------------
 # 🔹 Настройки
 # -----------------------------
-TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"
-TIMEZONE = pytz.timezone("Asia/Ho_Chi_Minh")
+TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"  # токен твоего бота
+TIMEZONE = pytz.timezone("Asia/Ho_Chi_Minh")  # часовой пояс
 announcement_posted = {}
 
 # -----------------------------
-# 🔹 Функции
+# 🔹 Функция для определения периода дня
 # -----------------------------
 def get_time_period():
     now = datetime.now(TIMEZONE).time()
@@ -27,7 +27,10 @@ def get_time_period():
     else:
         return "night"
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# -----------------------------
+# 🔹 Обработчики сообщений
+# -----------------------------
+async def handle_message(update, context):
     message = getattr(update, "edited_message", None) or update.message
     if not message:
         return
@@ -90,7 +93,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.delete()
         return
 
-async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# === Приветствие новых участников ===
+async def greet_new_member(update, context):
     message = update.message
     if not message or not getattr(message, "new_chat_members", None):
         return
@@ -103,27 +107,32 @@ async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # -----------------------------
-# 🔹 Инициализация приложения
+# 🔹 Инициализация бота
 # -----------------------------
-application = ApplicationBuilder().token(TOKEN).build()
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-application.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
+app_bot = ApplicationBuilder().token(TOKEN).build()
+app_bot.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
+app_bot.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
+app_bot.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, handle_message))
+app_bot.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_message))
 
 # -----------------------------
 # 🔹 Flask + webhook
 # -----------------------------
-app_flask = Flask(__name__)
+bot = Bot(token=TOKEN)
+flask_app = Flask(__name__)
 
-@app_flask.route(f"/{TOKEN}", methods=["POST"])
-async def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
+@flask_app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    """Telegram присылает сюда обновления"""
+    update = Update.de_json(request.get_json(force=True), bot)
+    # синхронно обрабатываем async через asyncio.run
+    asyncio.run(app_bot.process_update(update))
     return "ok"
 
 # -----------------------------
-# 🔹 Старт Flask
+# 🔹 Старт сервиса
 # -----------------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app_flask.run(host="0.0.0.0", port=port)
+    import os
+    port = int(os.environ.get("PORT", 5000))  # Render назначает порт
+    flask_app.run(host="0.0.0.0", port=port)
