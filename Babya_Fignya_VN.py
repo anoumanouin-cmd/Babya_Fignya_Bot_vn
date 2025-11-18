@@ -1,3 +1,4 @@
+# Babya_Fignya_Bot.py
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ChatMemberHandler, ContextTypes
 from datetime import datetime
@@ -7,7 +8,7 @@ import asyncio
 # -----------------------------
 # 🔹 Настройки
 # -----------------------------
-TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"
+TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"  # твой токен
 TIMEZONE = pytz.timezone("Asia/Ho_Chi_Minh")
 announcement_posted = {}
 
@@ -93,16 +94,14 @@ async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -----------------------------
 async def main():
     app_bot = ApplicationBuilder().token(TOKEN).build()
+
     app_bot.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
     app_bot.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
     app_bot.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, handle_message))
     app_bot.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_message))
 
-    print("🚀 Bot started, long-polling...")
-    await app_bot.initialize()
-    await app_bot.start()
-    await app_bot.updater.start_polling()  # long-polling
-    await app_bot.idle()
+    print("🚀 Bot is running on polling mode!")
+    await app_bot.run_polling()
 
 if __name__ == "__main__":
     asyncio.run(main())
