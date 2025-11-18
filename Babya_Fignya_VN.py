@@ -1,15 +1,13 @@
-from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ChatMemberHandler, ContextTypes
 from datetime import datetime
 import pytz
-import os
 import asyncio
 
 # -----------------------------
 # 🔹 Настройки
 # -----------------------------
-TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"  # твой токен
+TOKEN = "8301083124:AAGhbMXn6LuBpr2mT3tVWvw42dEcC2PYHyk"
 TIMEZONE = pytz.timezone("Asia/Ho_Chi_Minh")
 announcement_posted = {}
 
@@ -93,37 +91,18 @@ async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -----------------------------
 # 🔹 Инициализация бота
 # -----------------------------
-app_bot = ApplicationBuilder().token(TOKEN).build()
-app_bot.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
-app_bot.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
-app_bot.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, handle_message))
-app_bot.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_message))
+async def main():
+    app_bot = ApplicationBuilder().token(TOKEN).build()
+    app_bot.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
+    app_bot.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
+    app_bot.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, handle_message))
+    app_bot.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_message))
 
-# -----------------------------
-# 🔹 Flask + Webhook
-# -----------------------------
-flask_app = Flask(__name__)
+    print("🚀 Bot started, long-polling...")
+    await app_bot.initialize()
+    await app_bot.start()
+    await app_bot.updater.start_polling()  # long-polling
+    await app_bot.idle()
 
-@flask_app.route("/", methods=["GET"])
-def index():
-    return "Bot is running!", 200
-
-# создаём отдельный loop
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-loop.run_until_complete(app_bot.initialize())
-print("🚀 Bot initialized and ready for webhook!")
-
-@flask_app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, app_bot.bot)
-    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), loop)
-    return "ok", 200
-
-# -----------------------------
-# 🔹 Старт Flask
-# -----------------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    flask_app.run(host="0.0.0.0", port=port)
+    asyncio.run(main())
