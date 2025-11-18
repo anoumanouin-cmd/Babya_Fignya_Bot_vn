@@ -11,7 +11,7 @@ from datetime import datetime
 import pytz
 import os
 import asyncio
-import threading
+from threading import Thread
 
 # -----------------------------
 # 🔹 Настройки
@@ -21,7 +21,7 @@ TIMEZONE = pytz.timezone("Asia/Ho_Chi_Minh")
 announcement_posted = {}
 
 # -----------------------------
-# 🔹 Функция для определения периода дня
+# 🔹 Определение времени суток
 # -----------------------------
 def get_time_period():
     now = datetime.now(TIMEZONE).time()
@@ -29,11 +29,10 @@ def get_time_period():
         return "morning"
     elif datetime.strptime("16:00", "%H:%M").time() <= now <= datetime.strptime("23:59", "%H:%M").time():
         return "evening"
-    else:
-        return "night"
+    return "night"
 
 # -----------------------------
-# 🔹 Обработчики сообщений
+# 🔹 Обработчик объявлений
 # -----------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = getattr(update, "edited_message", None) or update.message
@@ -47,8 +46,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     author = message.from_user
     period = get_time_period()
     today = datetime.now(TIMEZONE).date().isoformat()
+
     if today not in announcement_posted:
-        announcement_posted[today] = {'morning': False, 'evening': False}
+        announcement_posted[today] = {"morning": False, "evening": False}
 
     if period == "night":
         await context.bot.send_message(
@@ -66,7 +66,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await context.bot.send_message(
                 chat_id=message.chat.id,
-                text=f"{author.mention_html()}, Объявление удалено: утреннее объявление уже было сегодня.",
+                text=f"{author.mention_html()}, Утреннее объявление уже было сегодня.",
                 parse_mode="HTML"
             )
             await message.delete()
@@ -79,7 +79,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await context.bot.send_message(
                 chat_id=message.chat.id,
-                text=f"{author.mention_html()}, Объявление удалено: вечернее объявление уже было сегодня.",
+                text=f"{author.mention_html()}, Вечернее объявление уже было сегодня.",
                 parse_mode="HTML"
             )
             await message.delete()
@@ -89,56 +89,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 🔹 Приветствие новых участников
 # -----------------------------
 async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.message
-    if not message or not getattr(message, "new_chat_members", None):
+    msg = update.message
+    if not msg or not msg.new_chat_members:
         return
-    for member in message.new_chat_members:
-        if member.is_bot:
-            continue
-        await context.bot.send_message(
-            chat_id=message.chat.id,
-            text=f"Привет, {member.first_name}! Пожалуйста, ознакомьтесь с правилами группы в закрепе. Приятного общения!"
-        )
+
+    for member in msg.new_chat_members:
+        if not member.is_bot:
+            await context.bot.send_message(
+                chat_id=msg.chat.id,
+                text=f"Привет, {member.first_name}! Ознакомьтесь с правилами в закрепе! Приятного общения ❤️"
+            )
 
 # -----------------------------
 # 🔹 Инициализация бота
 # -----------------------------
 app_bot = ApplicationBuilder().token(TOKEN).build()
 
-# Хендлеры
 app_bot.add_handler(ChatMemberHandler(greet_new_member, ChatMemberHandler.CHAT_MEMBER))
 app_bot.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
 app_bot.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, handle_message))
 app_bot.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_message))
 
 # -----------------------------
-# 🔹 Flask + webhook
+# 🔹 Flask — Webhook
 # -----------------------------
 flask_app = Flask(__name__)
 
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    """Telegram присылает сюда обновления"""
-    update = Update.de_json(request.get_json(force=True), app_bot.bot)
-    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), loop)
-    return "ok"
+    data = request.get_json(force=True)
+    print(">>> Update received")
+
+    update = Update.de_json(data, app_bot.bot)
+    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), app_bot._loop)
+
+    return "ok", 200
 
 # -----------------------------
-# 🔹 Старт сервиса
+# 🔹 Запуск: бот в отдельном потоке, Flask — в главном
 # -----------------------------
+def start_bot():
+    asyncio.set_event_loop(app_bot.loop)
+    app_bot.run_polling(stop_signals=None)
+
 if __name__ == "__main__":
+    print("🚀 Стартуем...")
+
+    bot_thread = Thread(target=start_bot, daemon=True)
+    bot_thread.start()
+
     port = int(os.environ.get("PORT", 5000))
-
-    # Создаём loop и инициализируем бота один раз
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    async def start_bot():
-        await app_bot.initialize()
-        print("🤖 Бот инициализирован и готов к вебхукам!")
-
-    # Запускаем инициализацию бота
-    loop.run_until_complete(start_bot())
-
-    # Flask запущен в основном потоке Render
     flask_app.run(host="0.0.0.0", port=port)
