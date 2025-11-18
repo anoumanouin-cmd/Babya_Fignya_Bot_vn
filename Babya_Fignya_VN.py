@@ -24,9 +24,9 @@ announcement_posted = {}
 # -----------------------------
 def get_time_period():
     now = datetime.now(TIMEZONE).time()
-    if now >= datetime.strptime("07:00", "%H:%M").time() and now < datetime.strptime("16:00", "%H:%M").time():
+    if datetime.strptime("07:00", "%H:%M").time() <= now < datetime.strptime("16:00", "%H:%M").time():
         return "morning"
-    elif now >= datetime.strptime("16:00", "%H:%M").time() and now <= datetime.strptime("23:59", "%H:%M").time():
+    elif datetime.strptime("16:00", "%H:%M").time() <= now <= datetime.strptime("23:59", "%H:%M").time():
         return "evening"
     else:
         return "night"
@@ -40,11 +40,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     content = message.text or message.caption
-    if not content:
-        return
-
-    text = content.lower()
-    if "#объявление" not in text:
+    if not content or "#объявление" not in content.lower():
         return
 
     author = message.from_user
@@ -121,6 +117,7 @@ flask_app = Flask(__name__)
 
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
+    """Telegram присылает сюда апдейты"""
     update = Update.de_json(request.get_json(force=True), app_bot.bot)
     asyncio.run_coroutine_threadsafe(app_bot.process_update(update), loop)
     return "ok"
@@ -135,8 +132,7 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(app_bot.initialize())
-
     print("🤖 Бот инициализирован и готов к вебхукам!")
 
-    # Flask запущен на Render
+    # Запускаем Flask (Render сам держит процесс)
     flask_app.run(host="0.0.0.0", port=port)
