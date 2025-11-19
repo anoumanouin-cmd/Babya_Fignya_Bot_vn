@@ -4,6 +4,8 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, ChatMember
 from datetime import datetime
 import pytz
 import asyncio
+from flask import Flask
+from threading import Thread  # для keep_alive
 
 # -----------------------------
 # 🔹 Настройки
@@ -90,6 +92,22 @@ async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 # -----------------------------
+# 🔹 Keep Alive для UptimeRobot
+# -----------------------------
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# -----------------------------
 # 🔹 Инициализация бота
 # -----------------------------
 async def main():
@@ -104,4 +122,5 @@ async def main():
     await app_bot.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    keep_alive()           # 🔹 запускаем мини-сервер
+    asyncio.run(main())    # 🔹 запускаем бота
